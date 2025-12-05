@@ -23,10 +23,13 @@
 
 ```mermaid
 graph TD
-    A[用户提问] --> B[智能体 Agent]
-    B --> C{LLM核心推理<br>是否需要工具？}
-    C -->|是， 需调用工具| D[执行对应工具<br>如 get_weather]
-    D --> E[获取工具结果]
-    E --> C
-    C -->|否， 生成最终答复| F[返回答案给用户]
-    G[状态检查点<br>MemorySaver] --- B
+     A[用户提问<br>“北京天气如何？”] --> B[智能体接收问题<br>加入消息状态]
+    B --> C{LLM核心思考<br>是否需要调用工具？}
+    
+    C -- 是， 需要查询天气 --> D[生成“工具调用消息”<br>AIMessage: content空, tool_calls有值]
+    D --> E[系统执行对应工具<br>get_weather]
+    E --> F[工具返回结果<br>ToolMessage]
+    F --> B
+    
+    C -- 否， 或工具结果已就绪 --> G[生成“最终回复消息”<br>AIMessage: content为自然语言]
+    G --> H[输出最终答案给用户]
