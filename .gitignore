@@ -1,0 +1,11 @@
+# 忽略Python虚拟环境和缓存
+venv/
+__pycache__/
+*.pyc
+
+# 忽略环境变量文件，保护你的密钥
+.env
+
+# 忽略IDE设置
+.vscode/
+.idea/
