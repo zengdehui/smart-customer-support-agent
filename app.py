@@ -39,6 +39,7 @@ def run_test():
     question ="重庆今天出门需要带伞吗，空气好不好"
     print(f"\n[用户]: {question}")
     result = agent.invoke({"messages": [{"role": "user", "content": question}]}, config_001)
+
     # 遍历消息，找到最后一条来自AI且包含实际内容的回复
     for msg in reversed(result['messages']): # 从后往前遍历消息
         if hasattr(msg,'type') and msg.type == 'ai' and msg.content:

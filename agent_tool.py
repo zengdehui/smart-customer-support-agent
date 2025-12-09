@@ -17,7 +17,7 @@ def get_weather(city: str, days: int = 1) -> str:
     if not api_host:
         return "天气服务未配置，请设置QWEATHER_API_HOST环境变量。"
     if not api_key:
-        return "天气服务未配置，请设置QWEATHER_API_API_KEY环境变量。"
+        return "天气服务未配置，请设置QWEATHER_API_KEY环境变量。"
 
     try:
         # 1. 通过城市名获取位置ID
@@ -25,10 +25,15 @@ def get_weather(city: str, days: int = 1) -> str:
         # 发送请求时传入 headers
         geo_resp = requests.get(geo_url, headers=api_header).json()
 
-        if geo_resp['code'] != '200' or not geo_resp.get('location'):
-            return f"找不到城市‘{city}’，请检查名称是否正确。"
+        # 更稳健的校验
+        code = str(geo_resp.get("code", ""))  # 有些 API 返回 int，有些返回 str
+        locations = geo_resp.get("location") or geo_resp.get("locations") or []
+        if code not in ("200", "0") or not locations:
+            return f"找不到城市‘{city}’，或地理位置服务返回异常。"
 
         location_id = geo_resp['location'][0]['id']
+        if not location_id:
+            return f"无法解析城市ID，请检查城市名：{city}"
         city_name = geo_resp['location'][0]['name']  # 获取标准名称，如“北京市”
 
         # 2. 根据天数决定调用实时天气（now）还是天气预报（3d/7d）
@@ -42,16 +47,19 @@ def get_weather(city: str, days: int = 1) -> str:
             weather_key = 'daily'
 
         weather_resp = requests.get(weather_url, headers=api_header).json()
-
-        if weather_resp['code'] != '200':
-            return f"获取{city_name}的天气数据失败，请稍后再试。"
+        wcode = str(weather_resp.get("code", ""))
+        if wcode not in ("200", "0"):
+            return f"获取{city_name}的天气数据失败（code={wcode}）。"
 
         # 3. 解析并返回结果
         if days == 1:
-            now = weather_resp[weather_key]
-            return f"{city_name}当前天气：{now['text']}，温度{now['temp']}℃，体感温度{now['feelsLike']}℃，湿度{now['humidity']}%，风向{now['windDir']}，风力{now['windScale']}级。"
+            now = weather_resp[weather_key] or {}
+            return (f"{city_name}当前天气：{now['text']}，温度{now['temp']}℃，体感温度{now['feelsLike']}℃，"
+                    f"湿度{now['humidity']}%，风向{now['windDir']}，风力{now['windScale']}级。")
         else:
-            forecast_list = weather_resp[weather_key]
+            forecast_list = weather_resp.get(weather_key, []) or []
+            if not forecast_list:
+                return f"{city_name}未来{days}天的天气数据不可用。"
             # 只取前 `days` 天的预报
             summary = []
             for day_forecast in forecast_list[:days]:
@@ -75,26 +83,31 @@ def get_air_quality(city: str, days: int = 1) -> str:
     if not api_host:
         return "天气服务未配置，请设置QWEATHER_API_HOST环境变量。"
     if not api_key:
-        return "天气服务未配置，请设置QWEATHER_API_API_KEY环境变量。"
+        return "天气服务未配置，请设置QWEATHER_API_KEY环境变量。"
     try:
         geo_url = f"https://{api_host}/geo/v2/city/lookup?location={city}"
         geo_resp = requests.get(geo_url, headers=api_header).json()
 
-        location_info = geo_resp['location'][0]
-        city_name = location_info['name']
+        locations = geo_resp.get("location") or []
+        if not locations:
+            return f"未找到城市 {city} 的位置信息。"
+        location_info = locations[0]
+        city_name = location_info.get("name", city)
         lat = location_info['lat']
         lon = location_info['lon']
+        if lat is None or lon is None:
+            return f"无法获取 {city} 的经纬度信息。"
         # 构建空气质量预报请求URL，使用经纬度作为路径参数
         aqi_forecast_url = f"https://{api_host}/airquality/v1/daily/{lat}/{lon}"
         aqi_resp = requests.get(aqi_forecast_url, headers=api_header).json()
-        print(aqi_resp)
         # 3. 解析返回的JSON数据 (数据结构较复杂)[citation:1]
-        days_data = aqi_resp.get('days', [])
+        days_data = aqi_resp.get("days") or []
         if not days_data:
             return f"未找到{city}的空气质量预报数据。"
 
         # 根据请求的天数获取数据，注意免费版可能只返回3天[citation:6]
-        target_day = days_data[days - 1] if len(days_data) >= days else days_data[0]
+        idx = min(max(1, int(days)), len(days_data)) - 1
+        target_day = days_data[idx]
 
         # 实际数据中包含 `qaqi`, `eu-eea` 等多种指数，您可以根据需要选择
         primary_index = target_day['indexes'][0] if target_day.get('indexes') else {}
